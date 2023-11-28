@@ -1,5 +1,5 @@
 const express = require("express");
-const mysql = require("mysql2");
+const mysql = require("mysql2/promise"); // Using mysql2 with promises
 const bodyParser = require("body-parser");
 const bcrypt = require("bcrypt");
 
@@ -8,71 +8,71 @@ const port = 3009;
 
 app.use(bodyParser.json());
 
-// MySQL Connection
-const connection = mysql.createConnection({
+// MySQL Connection Pool
+const pool = mysql.createPool({
   host: "localhost",
   user: "root",
   password: "root1234",
   database: "organizewiseadminpanel",
-});
-
-connection.connect((err) => {
-  if (err) {
-    console.error("Error connecting to MySQL: ", err);
-  } else {
-    console.log("Connected to MySQL");
-  }
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
 });
 
 // Function to create the staff table
-function createAdminTable() {
+async function createAdminTable() {
   const createTableQuery = `
       CREATE TABLE IF NOT EXISTS admins (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
+        username VARCHAR(255) NOT NULL,
         password VARCHAR(255) NOT NULL,
-        email VARCHAR(255) NOT NULL
+        email VARCHAR(255) NOT NULL,
+        mobilenumber INT
       );`;
 
-  connection.query(createTableQuery, (err, results) => {
-    if (err) {
-      console.error("Error creating admin table: ", err);
-    } else {
-      console.log("admin table created successfully");
-    }
+  const connection = await pool.getConnection();
 
-    // Close the MySQL connection
-    connection.end();
-  });
+  try {
+    // Execute the query
+    await connection.query(createTableQuery);
+    console.log("admin table created successfully");
+  } catch (err) {
+    console.error("Error creating admin table: ", err);
+  } finally {
+    // Release the connection
+    connection.release();
+  }
 }
 
 createAdminTable();
-
-// Endpoint for staff registration
-app.post("/api/v1/staffregistration", async (req, res) => {
+// Api to register into the super admin panel
+app.post("/register", async (req, res) => {
   try {
-    const { name, password, email, role } = req.body;
-
-    // Hash the password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Insert the staff data into the database
-    const sql =
-      "INSERT INTO staff (name, password, email, role) VALUES (?, ?, ?, ?)";
-    const values = [name, hashedPassword, email, role];
-
-    connection.query(sql, values, (err, results) => {
-      if (err) {
-        console.error("Error inserting into the database: ", err);
-        return res.status(500).json({ message: "Internal Server Error" });
-      }
-
-      res.status(201).json({ message: "Registration successful" });
+    const { username, password, email, mobilenumber } = req.body;
+    const connection = await pool.getConnection();
+    await connection.execute(
+      `INSERT INTO admins(
+        username, password, email, mobilenumber
+      )VALUES(?,?,?,?)`,
+      [username, password, email, mobilenumber]
+    );
+    connection.release();
+    res.json({
+      success: true,
+      message: "Record inserted Successfully in admins table",
     });
   } catch (error) {
-    console.error("Error in staff registration endpoint: ", error);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.error("Error Inserting Record in admins table:", error);
+    res.status(500).json({ error: "Internal Server Error" });
   }
+});
+
+//API to login into the super admin panel
+app.post("/login", async (req, res) => {
+  const { jsonData } = req.body;
+  const { username, password } = jsonData;
+
+  const passwordMatched = await bcrypt.compare(password, password);
 });
 
 // Start the server
