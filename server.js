@@ -2,9 +2,13 @@ const express = require("express");
 const mysql = require("mysql2/promise"); // Using mysql2 with promises
 const bodyParser = require("body-parser");
 const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const cors = require("cors");
 
 const app = express();
 const port = 3009;
+
+app.use(cors());
 
 app.use(bodyParser.json());
 
@@ -46,33 +50,105 @@ async function createAdminTable() {
 
 createAdminTable();
 // Api to register into the super admin panel
+
+app.put("/update", async (req, res) => {
+  const { username } = req.body;
+  const updateQuery = "DELETE FROM admins WHERE username = ?";
+
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.execute(updateQuery, [username]);
+    res.json({
+      success: true,
+      message: `Admin with username ${username} deleted successfully.`,
+    });
+  } catch (error) {
+    console.error("Error executing delete query:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  } finally {
+    connection.release();
+  }
+});
+
 app.post("/register", async (req, res) => {
   try {
     const { username, password, email, mobilenumber } = req.body;
+
+    // Check if the username, email, and mobile number already exist
+    const checkUserQuery =
+      "SELECT COUNT(*) AS count FROM admins WHERE username = ? OR email = ? OR mobilenumber = ?";
     const connection = await pool.getConnection();
-    await connection.execute(
-      `INSERT INTO admins(
-        username, password, email, mobilenumber
-      )VALUES(?,?,?,?)`,
-      [username, password, email, mobilenumber]
-    );
-    connection.release();
-    res.json({
-      success: true,
-      message: "Record inserted Successfully in admins table",
-    });
+
+    try {
+      const [result] = await connection.execute(checkUserQuery, [
+        username,
+        email,
+        mobilenumber,
+      ]);
+      const userExists = result[0].count > 0;
+
+      if (userExists) {
+        const existingFields = [];
+        if (result[0].count > 0) existingFields.push("Username");
+        if (result[1].count > 0) existingFields.push("Email");
+        if (result[2].count > 0) existingFields.push("Mobile Number");
+
+        res.status(400).json({
+          success: false,
+          message: `${existingFields.join(
+            ", "
+          )} already exists. Please choose different values.`,
+        });
+        return;
+      }
+
+      // Insert the record if the username, email, and mobile number don't exist
+      const hashedPassword = await bcrypt.hash(password, 10);
+      await connection.execute(
+        `INSERT INTO admins (username, password, email, mobilenumber) VALUES (?, ?, ?, ?)`,
+        [username, hashedPassword, email, mobilenumber]
+      );
+
+      res.json({
+        success: true,
+        message: "Record inserted successfully in admins table",
+      });
+    } finally {
+      connection.release();
+    }
   } catch (error) {
-    console.error("Error Inserting Record in admins table:", error);
+    console.error("Error inserting record in admins table:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-//API to login into the super admin panel
 app.post("/login", async (req, res) => {
-  const { jsonData } = req.body;
-  const { username, password } = jsonData;
+  const { username, password } = req.body;
 
-  const passwordMatched = await bcrypt.compare(password, password);
+  const selectUserQuery = `SELECT * FROM admins WHERE username = '${username.username}';`;
+  const connection = await pool.getConnection();
+  const databaseUser = await connection.execute(selectUserQuery);
+  const hashedPasswordd = databaseUser[0][0].password;
+  if (databaseUser[0] === undefined) {
+    response.status(400);
+    response.send({ error_msg: "Invalid user" });
+  } else {
+    const isPasswordMatched = await bcrypt.compare(
+      password.password,
+      hashedPasswordd
+    );
+    if (isPasswordMatched === true) {
+      const payload = {
+        username: username.username,
+      };
+      const jwt_token = jwt.sign(payload, "MY_SECRET_TOKEN");
+      res.send({ jwt_token });
+    } else {
+      res.status(400);
+      res.send({ error_msg: "Invalid password" });
+    }
+  }
 });
 
 // Start the server
