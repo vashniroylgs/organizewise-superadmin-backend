@@ -12,12 +12,23 @@ app.use(cors());
 
 app.use(bodyParser.json());
 
-// MySQL Connection Pool
-const pool = mysql.createPool({
+// MySQL Connection Pool1 which is organizewise database
+const pool1 = mysql.createPool({
   host: "localhost",
   user: "root",
   password: "root1234",
   database: "organizewiseadminpanel",
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+});
+
+//mysql connection pool2 which is bitrix database
+const pool2 = mysql.createPool({
+  host: "localhost",
+  user: "root",
+  password: "root1234",
+  database: "bitrix",
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
@@ -34,7 +45,7 @@ async function createAdminTable() {
         mobilenumber INT
       );`;
 
-  const connection = await pool.getConnection();
+  const connection = await pool1.getConnection();
 
   try {
     // Execute the query
@@ -49,13 +60,13 @@ async function createAdminTable() {
 }
 
 createAdminTable();
-// Api to register into the super admin panel
 
+// Api to register into the super admin panel
 app.put("/update", async (req, res) => {
   const { username } = req.body;
   const updateQuery = "DELETE FROM admins WHERE username = ?";
 
-  const connection = await pool.getConnection();
+  const connection = await pool1.getConnection();
 
   try {
     await connection.execute(updateQuery, [username]);
@@ -78,7 +89,7 @@ app.post("/register", async (req, res) => {
     // Check if the username, email, and mobile number already exist
     const checkUserQuery =
       "SELECT COUNT(*) AS count FROM admins WHERE username = ? OR email = ? OR mobilenumber = ?";
-    const connection = await pool.getConnection();
+    const connection = await pool1.getConnection();
 
     try {
       const [result] = await connection.execute(checkUserQuery, [
@@ -127,7 +138,7 @@ app.post("/login", async (req, res) => {
   const { username, password } = req.body;
 
   const selectUserQuery = `SELECT * FROM admins WHERE username = '${username.username}';`;
-  const connection = await pool.getConnection();
+  const connection = await pool1.getConnection();
   const databaseUser = await connection.execute(selectUserQuery);
   const hashedPasswordd = databaseUser[0][0].password;
   if (databaseUser[0] === undefined) {
@@ -148,6 +159,102 @@ app.post("/login", async (req, res) => {
       res.status(400);
       res.send({ error_msg: "Invalid password" });
     }
+  }
+});
+
+//Posting API to post the organization details in organization table
+app.post("/addorganization", async (req, res) => {
+  try {
+    const {
+      organizationName,  
+      description,       
+      industry,
+      address,
+      city,
+      country,
+      state,
+      postalCode,
+      phone,
+      companyEmail,
+      website,
+      responsiblePerson,
+      companyRegistrationNumber,
+      companyLogo
+      
+    } = req.body;
+
+ 
+    
+
+    console.log(req.body);
+
+    const connection = await pool2.getConnection();
+    await connection.execute(
+      `INSERT INTO organizationsTable (
+        organiztionName ,
+        Description ,
+        Industry ,
+        Address ,
+        City ,
+        State ,
+        Country ,
+        PostalCode ,
+        phone ,
+        CompanyEmail ,
+        Website ,
+        ResponsiblePerson ,
+        CompanyRegistrationNumber ,
+        CompanyLogo 
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        organizationName,
+        description,
+        industry,
+        address,
+        city,
+        state,
+        country,
+        postalCode,
+        phone,
+        companyEmail,
+        website,
+        responsiblePerson,
+        companyRegistrationNumber,
+        companyLogo,
+      ]
+    );
+
+    connection.release();
+
+    res.json({
+      success: true,
+      message: "Record Inserted Successfully in Organization Table",
+    });
+  } catch (error) {
+    console.log("Error inserting record in organization table", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+
+//api to get the data from bitrix database which data in organizationstable
+app.get("/getorganizations", async (req, res) => {
+  const getOrganizationsquery = `SELECT * FROM organizationstable`;
+  const connection = await pool2.getConnection();
+  try {
+    const organizationsQuery = await connection.execute(getOrganizationsquery);
+    const organizationsData = organizationsQuery[0];
+    console.log(organizationsData)
+    res.json({
+      success: true,
+      message: "Fetched data from organizations table",
+      data: organizationsData,
+    });
+  } catch (error) {
+    console.error("Error executing get organizations", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  } finally {
+    connection.release();
   }
 });
 
