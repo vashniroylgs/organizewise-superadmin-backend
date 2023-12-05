@@ -42,7 +42,7 @@ async function createAdminTable() {
         username VARCHAR(255) NOT NULL,
         password VARCHAR(255) NOT NULL,
         email VARCHAR(255) NOT NULL,
-        mobilenumber INT
+        mobilenumber TEXT
       );`;
 
   const connection = await pool1.getConnection();
@@ -166,8 +166,8 @@ app.post("/login", async (req, res) => {
 app.post("/addorganization", async (req, res) => {
   try {
     const {
-      organizationName,  
-      description,       
+      organizationName,
+      description,
       industry,
       address,
       city,
@@ -179,12 +179,8 @@ app.post("/addorganization", async (req, res) => {
       website,
       responsiblePerson,
       companyRegistrationNumber,
-      companyLogo
-      
+      companyLogo,
     } = req.body;
-
- 
-    
 
     console.log(req.body);
 
@@ -236,7 +232,6 @@ app.post("/addorganization", async (req, res) => {
   }
 });
 
-
 //api to get the data from bitrix database which data in organizationstable
 app.get("/getorganizations", async (req, res) => {
   const getOrganizationsquery = `SELECT * FROM organizationstable`;
@@ -244,7 +239,7 @@ app.get("/getorganizations", async (req, res) => {
   try {
     const organizationsQuery = await connection.execute(getOrganizationsquery);
     const organizationsData = organizationsQuery[0];
-    console.log(organizationsData)
+    console.log(organizationsData);
     res.json({
       success: true,
       message: "Fetched data from organizations table",
